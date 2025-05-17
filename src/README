@@ -1,0 +1,14 @@
+--How to Compile
+  In "PJ4/src/", enter the following command
+  $ make
+  An executable file "PJ4" will be generated in "PJ4/bin/".
+
+  If you want to remove it, please enter the following command:
+  $ make clean
+
+--How to Run
+  Usage:
+  $ ./PJ4 <txt file> <out file>
+
+  E.g., in "PJ4/bin/", enter the following command:
+  $ ./hw2 ../testcase/sample.txt ../output/sample.out
