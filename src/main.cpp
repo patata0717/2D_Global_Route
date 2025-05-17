@@ -20,56 +20,16 @@
 #include <chrono>
 using namespace std;
 
-/*
-class GridMap;
-class Net;
-struct Coord;
-
-struct Coord {
-    int x;
-    int y;
-
-    bool operator==(const Coord& other) const {
-        return x == other.x && y == other.y;
-    }
-};
-
-struct hash_pair {
-    size_t operator()(const Coord& c) const {
-        return hash<int>()(c.x) ^ (hash<int>()(c.y) << 1);
-    }
-};
-
-class GridMap {
-public:
-    vector<vector<bool>> horizontal;
-    vector<vector<bool>> vertical;
-
-    GridMap(int M = 0, int N = 0)
-        : horizontal(M, vector<bool>(N - 1, false)),
-          vertical(M - 1, vector<bool>(N, false)) {}
-};
-
-class Net {
-public:
-    Net(int id) : id(id) {}
-
-    int id;
-    vector<Coord> Gcells;
-    GridMap zigzag;
-    GridMap best_steiner;
-
-    unordered_set<Coord, hash_pair> steiner_nodes;
-    unordered_map<Coord, vector<Coord>, hash_pair> adjacency;
-};
-*/
-
 enum Direction {
     UP,
     RIGHT,
     DOWN,
     LEFT
 };
+
+// Global variable
+int M, N;
+int H_limit, V_limit;
 
 double GetTime(void);
 bool GetLine(istream &input_file, stringstream &line);
@@ -82,25 +42,16 @@ vector<pair<Coord, Coord>> find_cycle(const unordered_map<Coord, vector<Coord>, 
 void MapAdjacencyToGridMap(Net &net);
 void PrintGridMap(const GridMap &grid);
 
-
-
-// Global variable
-int M, N;
-int H_limit, V_limit;
-
-
 // void Tree2Route(adjlist steinertree, GridMap gridmap) {
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file>\n";
+    if (argc < 5) {
+        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> <from> <to>\n";
         return 1;
     }
 
     double t0;
     t0 = GetTime(); // start time
-
-    vector<Net> nets;
 
 /*---Read input---*/
     string input_filepath = argv[1];  // ../testcase/sample.txt
@@ -108,17 +59,18 @@ int main(int argc, char* argv[]) {
     stringstream line;
 
     // Read Number of Hardblocks
-    // Gcell_grid 5 4
+    // Gcell_grid 4 5
     if (GetLine(input_file, line)) {
         string dummy_Gcell_grid;
         line >> dummy_Gcell_grid >> M >> N;
     }
+    cout << "M: " << M << ", N: " << N << endl;
     // HTrack 4
     if (GetLine(input_file, line)) {
         string HTrack;
         line >> HTrack >> H_limit;
     }
-    // VTrack 4
+    // VTrack 3
     if (GetLine(input_file, line)) {
         string VTrack;
         line >> VTrack >> V_limit;
@@ -128,7 +80,7 @@ int main(int argc, char* argv[]) {
     // N1  (0 0) (1 0) (2 2)
     // ...
     // end_of_nets
-    nets.resize(16 + 1);
+    vector<Net> nets(16 + 1);
     while (GetLine(input_file, line)) {
         string keyword;
         line >> keyword;
@@ -167,23 +119,34 @@ int main(int argc, char* argv[]) {
 
 /*---Init Route---*/
 
-    vector<vector<int>> super_horizontal(N, vector<int>(M - 1, 0));
-    vector<vector<int>> super_vertical(N - 1, vector<int>(M, 0));
+    cout << M << " " << N << endl;
+    vector<vector<int>> super_horizontal(M, vector<int>(N - 1, 0));
+    vector<vector<int>> super_vertical(M - 1, vector<int>(N, 0));
 
-    for (int i = 1; i <= 16; ++i) {
+    for (int i = stoi(argv[3]); i <= stoi(argv[4]); i++) {
         cout << "Net " << i << ":\n";
         Zigzag_route(nets[i]);
         Best_steiner_route(nets[i]);
+        // print adjacency
+        cout << "Adjacency List:\n";
+        for (const auto& entry : nets[i].adjacency) {
+            const Coord& from = entry.first;
+            const vector<Coord>& neighbors = entry.second;
+            cout << "(" << from.x << "," << from.y << "): ";
+            for (const auto& to : neighbors) {
+                cout << "(" << to.x << "," << to.y << ") ";
+            }
+            cout << endl;
+        }
         MapAdjacencyToGridMap(nets[i]);
-        cout << "\nMapped Grid for Net " << nets[i].id << ":\n";
-        PrintGridMap(nets[i].best_steiner);
+        // cout << "\nMapped Grid for Net " << nets[i].id << ":\n";
         // Accumulate usage count
-        for (int y = 0; y < N; ++y)
-            for (int x = 0; x < M - 1; ++x)
+        for (int y = 0; y < M; ++y)
+            for (int x = 0; x < N - 1; ++x)
                 if (nets[i].best_steiner.horizontal[y][x])
                     ++super_horizontal[y][x];
-        for (int y = 0; y < N - 1; ++y)
-            for (int x = 0; x < M; ++x)
+        for (int y = 0; y < M - 1; ++y)
+            for (int x = 0; x < N; ++x)
                 if (nets[i].best_steiner.vertical[y][x])
                     ++super_vertical[y][x];
     }
@@ -191,16 +154,16 @@ int main(int argc, char* argv[]) {
     // Print superimposed net count
     cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
     cout << "Horizontal Matrix:\n";
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < M - 1; ++x) {
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N - 1; ++x) {
             cout << super_horizontal[y][x] << " ";
         }
         cout << "\n";
     }
     cout << "\n";
     cout << "Vertical Matrix:\n";
-    for (int y = 0; y < N - 1; ++y) {
-        for (int x = 0; x < M; ++x) {
+    for (int y = 0; y < M - 1; ++y) {
+        for (int x = 0; x < N; ++x) {
             cout << super_vertical[y][x] << " ";
         }
         cout << "\n";
@@ -217,8 +180,8 @@ int main(int argc, char* argv[]) {
     output_file << "N " << N << endl;
     output_file << endl;
     output_file << "Horizontal Matrix:\n";
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < M - 1; ++x) {
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N - 1; ++x) {
             output_file << super_horizontal[y][x] << " ";
         }
         output_file << "\n";
@@ -226,8 +189,8 @@ int main(int argc, char* argv[]) {
     output_file << "\n";
 
     output_file << "Vertical Matrix:\n";
-    for (int y = 0; y < N - 1; ++y) {
-        for (int x = 0; x < M; ++x) {
+    for (int y = 0; y < M - 1; ++y) {
+        for (int x = 0; x < N; ++x) {
             output_file << super_vertical[y][x] << " ";
         }
         output_file << "\n";
@@ -340,8 +303,8 @@ void Best_steiner_route(Net &net) {
 
     bool do_flag;
     do {
-        for (int y = 0; y < N; ++y) {
-            for (int x = 0; x < M; ++x) {
+        for (int y = 0; y < M; ++y) {
+            for (int x = 0; x < N; ++x) {
                 Coord cur{ x, y };
                 if (fixed.count(cur) || net.steiner_nodes.count(cur))
                     continue;
@@ -387,8 +350,8 @@ void Best_steiner_route(Net &net) {
                         int longest = manhattan(largest.first, largest.second);
                         erase_edge(local_adj, largest.first, largest.second);
                         total_gain += longest;
-//                       std::cout << "    🔁 Loop detected! Removing largest edge: ("
-//                                 << largest.first.x << "," << largest.first.y << ") - ("
+//                        std::cout << "    🔁 Loop detected! Removing largest edge: ("
+//                                  << largest.first.x << "," << largest.first.y << ") - ("
 //                                  << largest.second.x << "," << largest.second.y << "), gain += "
 //                                  << longest << std::endl;
                     }
@@ -458,7 +421,7 @@ Coord Search_nearest(Coord src, Direction dir, const unordered_set<Coord, hash_p
     queue<Coord> q;
 
     auto in_bounds = [&](Coord c) {
-        return 0 <= c.x && c.x < M && 0 <= c.y && c.y < N;
+        return 0 <= c.x && c.x < N && 0 <= c.y && c.y < M;
     };
 
     auto in_cone = [&](Coord from, Coord to) -> bool {
@@ -592,14 +555,15 @@ void MapAdjacencyToGridMap(Net &net) {
             if (abs(dx) + abs(dy) != 1)
                 continue;
 
-            if (dx == 1)
+            if (dx == 1) {
                 net.best_steiner.horizontal[from.y][from.x] = true;
-            else if (dx == -1)
+            } else if (dx == -1) {
                 net.best_steiner.horizontal[from.y][to.x] = true;
-            else if (dy == 1)
+            } else if (dy == 1) {
                 net.best_steiner.vertical[from.y][from.x] = true;
-            else if (dy == -1)
+            } else if (dy == -1) {
                 net.best_steiner.vertical[to.y][from.x] = true;
+            }
         }
     }
 }
@@ -607,16 +571,16 @@ void MapAdjacencyToGridMap(Net &net) {
 
 void PrintGridMap(const GridMap &grid) {
     cout << "Horizontal Matrix:\n";
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < M - 1; ++x) {
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N - 1; ++x) {
             cout << grid.horizontal[y][x] << " ";
         }
         cout << "\n";
     }
 
     cout << "Vertical Matrix:\n";
-    for (int y = 0; y < N - 1; ++y) {
-        for (int x = 0; x < M; ++x) {
+    for (int y = 0; y < M - 1; ++y) {
+        for (int x = 0; x < N; ++x) {
             cout << grid.vertical[y][x] << " ";
         }
         cout << "\n";

@@ -7,6 +7,7 @@ import re
 import sys
 import os
 from matplotlib.colors import Normalize
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # --- Step 1: Get filename from argument ---
 if len(sys.argv) != 2:
@@ -25,18 +26,14 @@ if not os.path.exists(input_path):
 with open(input_path, "r") as f:
     lines = f.readlines()
 
-# Clean empty lines
 lines = [line.strip() for line in lines if line.strip()]
 
-# Parse M and N
-M = int(re.search(r"\d+", lines[0]).group())  # columns
-N = int(re.search(r"\d+", lines[1]).group())  # rows
+M = int(re.search(r"\d+", lines[0]).group())  # rows
+N = int(re.search(r"\d+", lines[1]).group())  # columns
 
-# Parse horizontal and vertical matrices
 horizontal = []
 vertical = []
 mode = None
-
 for line in lines[2:]:
     if "Horizontal" in line:
         mode = "horizontal"
@@ -52,52 +49,61 @@ for line in lines[2:]:
         vertical.append(nums)
 
 # --- Step 3: Plot the grid ---
-fig, ax = plt.subplots(figsize=(M, N))
-ax.set_xlim(-0.5, M - 0.5)
-ax.set_ylim(N - 0.5, - 0.5)
+fig, ax = plt.subplots(figsize=(N, M))
+ax.set_xlim(-0.5, N - 0.5)
+ax.set_ylim(-0.5, M - 0.5)  # (0,0) bottom-left
 ax.set_aspect('equal')
 
-# Flip Y-axis to make (0,0) bottom-left
-flip_y = lambda y: (N - 1 - y)
-
-# Normalize color by max edge count
-max_val = max(max(map(max, horizontal)), max(map(max, vertical)))
-cmap = plt.cm.hot
-
 # Draw grid points
-for y in range(N):
-    for x in range(M):
-        ax.plot(x, flip_y(y), 'ko', markersize=4)
+for y in range(M):
+    for x in range(N):
+        ax.plot(x, y, 'ko', markersize=4)
+
+# Choose a single colormap, but two different normalizations
+cmaph = plt.cm.Greens
+cmapv = plt.cm.Reds
+norm_h = Normalize(vmin=0, vmax=4, clip=True)  # horizontal: 0–4
+norm_v = Normalize(vmin=0, vmax=3, clip=True)  # vertical:   0–3
 
 # Draw horizontal edges
-for y in range(N):
-    for x in range(M - 1):
+for y in range(M):
+    for x in range(N - 1):
         count = horizontal[y][x]
-        color = cmap(count / max_val)
-        y_plot = flip_y(y)
-        ax.plot([x, x + 1], [y_plot, y_plot], color=color, linewidth=2)
-        ax.text(x + 0.5, y_plot - 0.1, str(count), ha='center', va='center', fontsize=8)
+        color = cmaph(norm_h(count))
+        ax.plot([x, x + 1], [y, y], color=color, linewidth=2)
+        ax.text(x + 0.5, y - 0.2, str(count),
+                ha='center', va='center', fontsize=8)
 
 # Draw vertical edges
-for y in range(N - 1):
-    for x in range(M):
+for y in range(M - 1):
+    for x in range(N):
         count = vertical[y][x]
-        color = cmap(count / max_val)
-        y0 = flip_y(y)
-        y1 = flip_y(y + 1)
-        ax.plot([x, x], [y0, y1], color=color, linewidth=2)
-        ax.text(x + 0.1, (y0 + y1) / 2, str(count), ha='left', va='center', fontsize=8)
+        color = cmapv(norm_v(count))
+        ax.plot([x, x], [y, y + 1], color=color, linewidth=2)
+        ax.text(x + 0.1, y + 0.5, str(count),
+                ha='left', va='center', fontsize=8)
 
 # Hide axes
 ax.axis('off')
 
-# Add colorbar
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=Normalize(vmin=0, vmax=max_val))
-sm.set_array([])
-cbar = plt.colorbar(sm, ax=ax, shrink=0.7)
-cbar.set_label("Edge Usage Count")
+# --- Step 4: Add two colorbars ---
+# Horizontal colorbar
+sm_h = plt.cm.ScalarMappable(cmap=cmaph, norm=norm_h)
+sm_h.set_array([])
+# Vertical colorbar
+sm_v = plt.cm.ScalarMappable(cmap=cmapv, norm=norm_v)
+sm_v.set_array([])
 
-# Save the figure
+divider = make_axes_locatable(ax)
+cax_h = divider.append_axes("right", size="5%", pad=0.05)
+cbar_h = plt.colorbar(sm_h, cax=cax_h)
+cbar_h.set_label("Horizontal Usage Count (0–4)")
+
+cax_v = divider.append_axes("right", size="5%", pad=0.7)
+cbar_v = plt.colorbar(sm_v, cax=cax_v)
+cbar_v.set_label("Vertical Usage Count (0–3)")
+
+# Title & save
 plt.title(f"Superimposed Routing Grid ({M}×{N})")
 plt.tight_layout()
 plt.savefig(output_path)

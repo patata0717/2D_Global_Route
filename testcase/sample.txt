@@ -4,7 +4,7 @@
 # GC (Gcell)  column_index  row_index  L (M1 left_edge_capacity  M3 edge_capacity)  R right_edge_capacity B bottom_edge_capacity  T top_edge_capacity
 # net_name  pin_at_Gcell ( x1  y1 )   ( x2  y2 )   ( x3  y3 )
 # routing_layers 3  M1 horizontal  M2 vertical  M3 horizontal
-Gcell_grid  5 4 
+Gcell_grid  4 5 
 # Gcell
 # GC 0 0  L (M1 0  M3 0)  R (M1 1  M3 3)  B (M2 0)  T (M2 3)  
 # GC 0 1  L (M1 0  M3 0)  R (M1 1  M3 3)  B (M2 3)  T (M2 3)

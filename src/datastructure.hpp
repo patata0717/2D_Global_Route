@@ -40,7 +40,7 @@ public:
     vector<vector<bool>> horizontal;
     vector<vector<bool>> vertical;
 
-    GridMap() : horizontal(M, vector<bool>(N - 1, false)), vertical(N - 1, vector<bool>(M, false)) {}
+    GridMap() : horizontal(M, vector<bool>(N - 1, false)), vertical(M - 1, vector<bool>(N, false)) {}
 };
 
 class Net {
@@ -51,6 +51,7 @@ public:
     int id;
     vector<Coord> Gcells;
     GridMap best_steiner;
+
 
     unordered_set<Coord, hash_pair> steiner_nodes;
     unordered_map<Coord, vector<Coord>, hash_pair> adjacency;
