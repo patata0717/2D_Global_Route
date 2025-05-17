@@ -79,6 +79,9 @@ void Best_steiner_obstacle_route(GridMap obstacle, Net n);
 void Rip_up_reroute(GridMap gridmap, int seed);
 Coord Search_nearest(Coord src, Direction dir, const unordered_set<Coord, hash_pair>& steiner_nodes);
 vector<pair<Coord, Coord>> find_cycle(const unordered_map<Coord, vector<Coord>, hash_pair>& adjacency);
+void MapAdjacencyToGridMap(Net &net);
+void PrintGridMap(const GridMap &grid);
+
 
 
 // Global variable
@@ -164,49 +167,74 @@ int main(int argc, char* argv[]) {
 
 /*---Init Route---*/
 
-    nets[1].steiner_nodes.insert({0, 3});
-    Coord result;
-    result = Search_nearest({2, 1}, UP, nets[1].steiner_nodes);
-    if (result.x != -1) {
-        cout << "Found: (" << result.x << ", " << result.y << ") in UP\n";
-    } else {
-        cout << "No Steiner point found in UP.\n";
-    }
-    result = Search_nearest({2, 1}, DOWN, nets[1].steiner_nodes);
-    if (result.x != -1) {
-        cout << "Found: (" << result.x << ", " << result.y << ") in DOWN\n";
-    } else {
-        cout << "No Steiner point found in DOWN.\n";
-    }
-    result = Search_nearest({2, 1}, LEFT, nets[1].steiner_nodes);
-    if (result.x != -1) {
-        cout << "Found: (" << result.x << ", " << result.y << ") in LEFT\n";
-    } else {
-        cout << "No Steiner point found in LEFT.\n";
-    }
-    result = Search_nearest({2, 1}, RIGHT, nets[1].steiner_nodes);
-    if (result.x != -1) {
-        cout << "Found: (" << result.x << ", " << result.y << ") in RIGHT\n";
-    } else {
-        cout << "No Steiner point found in RIGHT.\n";
+    vector<vector<int>> super_horizontal(N, vector<int>(M - 1, 0));
+    vector<vector<int>> super_vertical(N - 1, vector<int>(M, 0));
+
+    for (int i = 1; i <= 16; ++i) {
+        cout << "Net " << i << ":\n";
+        Zigzag_route(nets[i]);
+        Best_steiner_route(nets[i]);
+        MapAdjacencyToGridMap(nets[i]);
+        cout << "\nMapped Grid for Net " << nets[i].id << ":\n";
+        PrintGridMap(nets[i].best_steiner);
+        // Accumulate usage count
+        for (int y = 0; y < N; ++y)
+            for (int x = 0; x < M - 1; ++x)
+                if (nets[i].best_steiner.horizontal[y][x])
+                    ++super_horizontal[y][x];
+        for (int y = 0; y < N - 1; ++y)
+            for (int x = 0; x < M; ++x)
+                if (nets[i].best_steiner.vertical[y][x])
+                    ++super_vertical[y][x];
     }
 
-    Zigzag_route(nets[1]);
-    Best_steiner_route(nets[1]);
+    // Print superimposed net count
+    cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
+    cout << "Horizontal Matrix:\n";
+    for (int y = 0; y < N; ++y) {
+        for (int x = 0; x < M - 1; ++x) {
+            cout << super_horizontal[y][x] << " ";
+        }
+        cout << "\n";
+    }
+    cout << "\n";
+    cout << "Vertical Matrix:\n";
+    for (int y = 0; y < N - 1; ++y) {
+        for (int x = 0; x < M; ++x) {
+            cout << super_vertical[y][x] << " ";
+        }
+        cout << "\n";
+    }
 
 
-/*---Stage 1: Area Optimization*/
+
 
 /*---Write result to output file*/
-/*
     string output_filepath = argv[2];  // ../output/sample.out
     cout << "Writing result to " << output_filepath << endl;
     ofstream output_file(output_filepath);
-    output_file << "Area " << verify_area << endl << endl;
-    output_file << "NumHardBlocks " << num_of_hardblocks << endl;
+    output_file << "M " << M << endl;
+    output_file << "N " << N << endl;
+    output_file << endl;
+    output_file << "Horizontal Matrix:\n";
+    for (int y = 0; y < N; ++y) {
+        for (int x = 0; x < M - 1; ++x) {
+            output_file << super_horizontal[y][x] << " ";
+        }
+        output_file << "\n";
+    }
+    output_file << "\n";
+
+    output_file << "Vertical Matrix:\n";
+    for (int y = 0; y < N - 1; ++y) {
+        for (int x = 0; x < M; ++x) {
+            output_file << super_vertical[y][x] << " ";
+        }
+        output_file << "\n";
+    }
     output_file.close();
     cout << "Time: " << GetTime() - t0 << endl;
-*/
+
     return 0;
 }
 
@@ -276,18 +304,6 @@ void Zigzag_route(Net& n) {
         n.adjacency[a].push_back(b);
         n.adjacency[b].push_back(a);
     }
-
-    // Print adjacency list
-    cout << "Adjacency list for Net " << n.id << ":\n";
-    for (unordered_map<Coord, vector<Coord>, hash_pair>::iterator it = n.adjacency.begin(); it != n.adjacency.end(); ++it) {
-        const Coord& from = it->first;
-        const vector<Coord>& neighbors = it->second;
-        cout << "(" << from.x << "," << from.y << ") -> ";
-        for (size_t i = 0; i < neighbors.size(); ++i) {
-            cout << "(" << neighbors[i].x << "," << neighbors[i].y << ") ";
-        }
-        cout << "\n";
-    }
 }
 
 
@@ -314,8 +330,6 @@ static void erase_edge(std::unordered_map<Coord, std::vector<Coord>, hash_pair> 
 void Best_steiner_route(Net &net) {
     // ─── Hard‑reset any pre‑existing Steiner points so each run
     //      starts with *only* the true terminals. ────────────────
-    net.steiner_nodes.clear();
-
     int   best_gain  = std::numeric_limits<int>::min();
     Coord best_coord = { -1, -1 };
 
@@ -324,43 +338,91 @@ void Best_steiner_route(Net &net) {
     // convert Gcells once for O(1) lookup
     std::unordered_set<Coord, hash_pair> fixed(net.Gcells.begin(), net.Gcells.end());
 
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < M; ++x) {
-            Coord cur{ x, y };
-            if (fixed.count(cur) || net.steiner_nodes.count(cur))
-                continue;
+    bool do_flag;
+    do {
+        for (int y = 0; y < N; ++y) {
+            for (int x = 0; x < M; ++x) {
+                Coord cur{ x, y };
+                if (fixed.count(cur) || net.steiner_nodes.count(cur))
+                    continue;
 
-            std::cout << "\n[Evaluating] Coord: (" << cur.x << "," << cur.y << ")\n";
+//                std::cout << "\n[Evaluating] Coord: (" << cur.x << "," << cur.y << ")\n";
 
-            // local working copies
-            std::unordered_map<Coord, std::vector<Coord>, hash_pair> local_adj = net.adjacency;
-            std::unordered_set<Coord, hash_pair> local_nodes = fixed;
-            local_nodes.insert(net.steiner_nodes.begin(), net.steiner_nodes.end());
-            local_nodes.insert(cur);
+                // local working copies
+                std::unordered_map<Coord, std::vector<Coord>, hash_pair> local_adj = net.adjacency;
+                std::unordered_set<Coord, hash_pair> local_nodes = fixed;
+                local_nodes.insert(net.steiner_nodes.begin(), net.steiner_nodes.end());
+                local_nodes.insert(cur);
 
-            int total_gain = 0;
+                int total_gain = 0;
+
+                for (size_t k = 0; k < dirs.size(); ++k) {
+                    Direction dir = dirs[k];
+//                    std::cout << "  Direction " << static_cast<int>(dir) << " → ";
+
+                    //–– robust neighbour search ––
+                    Coord nei = Search_nearest(cur, dir, local_nodes);
+                    if (nei.x == -1 || !local_nodes.count(nei)) {
+//                        std::cout << "No Steiner neighbor found." << std::endl;
+                        continue;
+                    }
+
+//                    std::cout << "Found neighbor: (" << nei.x << "," << nei.y << ")" << std::endl;
+
+                    add_edge(local_adj, cur, nei);
+                    int dist = manhattan(cur, nei);
+                    total_gain -= dist;
+//                    std::cout << "    Added edge: (" << cur.x << "," << cur.y << ") - ("
+//                              << nei.x << "," << nei.y << "), dist = " << dist
+//                              << ", gain -= " << dist << std::endl;
+
+                    std::vector<std::pair<Coord, Coord> > cycle_edges = find_cycle(local_adj);
+                    if (!cycle_edges.empty()) {
+                        std::pair<Coord, Coord> largest = *std::max_element(
+                            cycle_edges.begin(), cycle_edges.end(),
+                            [](const std::pair<Coord, Coord> &a,
+                               const std::pair<Coord, Coord> &b) {
+                                return manhattan(a.first, a.second) < manhattan(b.first, b.second);
+                            });
+                        int longest = manhattan(largest.first, largest.second);
+                        erase_edge(local_adj, largest.first, largest.second);
+                        total_gain += longest;
+//                       std::cout << "    🔁 Loop detected! Removing largest edge: ("
+//                                 << largest.first.x << "," << largest.first.y << ") - ("
+//                                  << largest.second.x << "," << largest.second.y << "), gain += "
+//                                  << longest << std::endl;
+                    }
+
+//                    std::cout << "    → Intermediate total gain: " << total_gain << std::endl;
+                }
+
+//                std::cout << "Total gain for (" << cur.x << "," << cur.y << ") = "
+//                          << total_gain << std::endl;
+
+                if (total_gain > best_gain) {
+                    best_gain  = total_gain;
+                    best_coord = cur;
+                }
+            }
+        }
+
+        do_flag = false;
+        if (best_gain >= 0) {
+            do_flag = true;
+            // ─── commit winner ────────────────────────────────────────────
+            net.steiner_nodes.insert(best_coord);
+
+            // Candidate set for neighbour search = pins ∪ current Steiner nodes
+            std::unordered_set<Coord, hash_pair> connect_set = fixed;
+            connect_set.insert(net.steiner_nodes.begin(), net.steiner_nodes.end());
 
             for (size_t k = 0; k < dirs.size(); ++k) {
                 Direction dir = dirs[k];
-                std::cout << "  Direction " << static_cast<int>(dir) << " → ";
+                Coord nei = Search_nearest(best_coord, dir, connect_set);
+                if (nei.x == -1) continue;
 
-                //–– robust neighbour search ––
-                Coord nei = Search_nearest(cur, dir, local_nodes);
-                if (nei.x == -1 || !local_nodes.count(nei)) {
-                    std::cout << "No Steiner neighbor found." << std::endl;
-                    continue;
-                }
-
-                std::cout << "Found neighbor: (" << nei.x << "," << nei.y << ")" << std::endl;
-
-                add_edge(local_adj, cur, nei);
-                int dist = manhattan(cur, nei);
-                total_gain -= dist;
-                std::cout << "    Added edge: (" << cur.x << "," << cur.y << ") - ("
-                          << nei.x << "," << nei.y << "), dist = " << dist
-                          << ", gain -= " << dist << std::endl;
-
-                std::vector<std::pair<Coord, Coord> > cycle_edges = find_cycle(local_adj);
+                add_edge(net.adjacency, best_coord, nei);
+                std::vector<std::pair<Coord, Coord> > cycle_edges = find_cycle(net.adjacency);
                 if (!cycle_edges.empty()) {
                     std::pair<Coord, Coord> largest = *std::max_element(
                         cycle_edges.begin(), cycle_edges.end(),
@@ -368,57 +430,18 @@ void Best_steiner_route(Net &net) {
                            const std::pair<Coord, Coord> &b) {
                             return manhattan(a.first, a.second) < manhattan(b.first, b.second);
                         });
-                    int longest = manhattan(largest.first, largest.second);
-                    erase_edge(local_adj, largest.first, largest.second);
-                    total_gain += longest;
-                    std::cout << "    🔁 Loop detected! Removing largest edge: ("
-                              << largest.first.x << "," << largest.first.y << ") - ("
-                              << largest.second.x << "," << largest.second.y << "), gain += "
-                              << longest << std::endl;
+                    erase_edge(net.adjacency, largest.first, largest.second);
                 }
-
-                std::cout << "    → Intermediate total gain: " << total_gain << std::endl;
-            }
-
-            std::cout << "Total gain for (" << cur.x << "," << cur.y << ") = "
-                      << total_gain << std::endl;
-
-            if (total_gain > best_gain) {
-                best_gain  = total_gain;
-                best_coord = cur;
             }
         }
-    }
 
-    if (best_coord.x == -1) {
-        std::cout << "\nNo beneficial Steiner point found" << std::endl;
-        return;
-    }
-
-    // commit winner
-    net.steiner_nodes.insert(best_coord);
-    for (size_t k = 0; k < dirs.size(); ++k) {
-        Direction dir = dirs[k];
-        Coord nei = Search_nearest(best_coord, dir, net.steiner_nodes);
-        if (nei.x == -1) continue;
-
-        add_edge(net.adjacency, best_coord, nei);
-        std::vector<std::pair<Coord, Coord> > cycle_edges = find_cycle(net.adjacency);
-        if (!cycle_edges.empty()) {
-            std::pair<Coord, Coord> largest = *std::max_element(
-                cycle_edges.begin(), cycle_edges.end(),
-                [](const std::pair<Coord, Coord> &a,
-                   const std::pair<Coord, Coord> &b) {
-                    return manhattan(a.first, a.second) < manhattan(b.first, b.second);
-                });
-            erase_edge(net.adjacency, largest.first, largest.second);
-        }
-    }
-
-    std::cout << "\nBest gain = " << best_gain
-              << " at (" << best_coord.x << ", " << best_coord.y << ")" << std::endl;
+//        std::cout << "\nBest gain = " << best_gain
+//                  << " at (" << best_coord.x << ", " << best_coord.y << ")" << std::endl;
+        // Reset best gain
+        best_gain = std::numeric_limits<int>::min();
+        best_coord = { -1, -1 };
+    } while (do_flag);
 }
-
 
 void Best_steiner_obstacle_route(GridMap obstacle, Net n) {
     GridMap best_steiner;
@@ -553,4 +576,49 @@ std::vector<std::pair<Coord, Coord> > find_cycle(const std::unordered_map<Coord,
         }
     }
     return {}; // no cycle
+}
+
+void MapAdjacencyToGridMap(Net &net) {
+    net.best_steiner = GridMap(); // Reset the grid
+
+    for (const auto &entry : net.adjacency) {
+        const Coord &from = entry.first;
+        const vector<Coord> &neighbors = entry.second;
+
+        for (const Coord &to : neighbors) {
+            int dx = to.x - from.x;
+            int dy = to.y - from.y;
+            // Only consider unit Manhattan distance (adjacent)
+            if (abs(dx) + abs(dy) != 1)
+                continue;
+
+            if (dx == 1)
+                net.best_steiner.horizontal[from.y][from.x] = true;
+            else if (dx == -1)
+                net.best_steiner.horizontal[from.y][to.x] = true;
+            else if (dy == 1)
+                net.best_steiner.vertical[from.y][from.x] = true;
+            else if (dy == -1)
+                net.best_steiner.vertical[to.y][from.x] = true;
+        }
+    }
+}
+
+
+void PrintGridMap(const GridMap &grid) {
+    cout << "Horizontal Matrix:\n";
+    for (int y = 0; y < N; ++y) {
+        for (int x = 0; x < M - 1; ++x) {
+            cout << grid.horizontal[y][x] << " ";
+        }
+        cout << "\n";
+    }
+
+    cout << "Vertical Matrix:\n";
+    for (int y = 0; y < N - 1; ++y) {
+        for (int x = 0; x < M; ++x) {
+            cout << grid.vertical[y][x] << " ";
+        }
+        cout << "\n";
+    }
 }
