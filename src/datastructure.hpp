@@ -9,6 +9,7 @@
 #include <limits.h>
 #include <tuple>
 #include <random>
+#include <numeric>
 using namespace std;
 
 extern int M;
@@ -21,13 +22,13 @@ struct Coord;
 
 
 struct Coord {
-    int x;
-    int y;
-
-    bool operator==(const Coord& other) const {
-        return x == other.x && y == other.y;
+    int x, y;
+    bool operator==(const Coord& o) const { return x==o.x && y==o.y; }
+    bool operator<(const Coord& o) const  {                 // NEW
+        return x < o.x || (x == o.x && y < o.y);
     }
 };
+
 
 struct hash_pair {
     size_t operator()(const Coord& c) const {
@@ -55,6 +56,30 @@ public:
 
     unordered_set<Coord, hash_pair> steiner_nodes;
     unordered_map<Coord, vector<Coord>, hash_pair> adjacency;
+};
+
+struct DSU {
+    std::vector<int> p, sz;
+    DSU(size_t n = 0){ reset(n); }
+    void reset(size_t n){
+        p.resize(n); sz.assign(n,1);
+        std::iota(p.begin(), p.end(), 0);
+    }
+    int find(int x){ return p[x]==x?x:p[x]=find(p[x]); }
+    void unite(int a,int b){
+        a=find(a); b=find(b);
+        if(a==b) return;
+        if(sz[a]<sz[b]) std::swap(a,b);
+        p[b]=a; sz[a]+=sz[b];
+    }
+    int num_sets() const{
+        int c=0; for(size_t i=0;i<p.size();++i) if(p[i]==(int)i) ++c;
+        return c;
+    }
+    int first_set() const{
+        for(size_t i=0;i<p.size();++i) if(p[i]==(int)i) return i;
+        return -1;
+    }
 };
 
 #endif

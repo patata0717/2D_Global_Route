@@ -35,12 +35,13 @@ double GetTime(void);
 bool GetLine(istream &input_file, stringstream &line);
 void Zigzag_route(Net& n);
 void Best_steiner_route(Net& n);
-void Best_steiner_obstacle_route(GridMap obstacle, Net n);
 void Rip_up_reroute(GridMap gridmap, int seed);
 Coord Search_nearest(Coord src, Direction dir, const unordered_set<Coord, hash_pair>& steiner_nodes);
 vector<pair<Coord, Coord>> find_cycle(const unordered_map<Coord, vector<Coord>, hash_pair>& adjacency);
 void MapAdjacencyToGridMap(Net &net);
 void PrintGridMap(const GridMap &grid);
+void Rip_net(Net& net, vector<vector<int>>& H, vector<vector<int>>& V);
+bool Lee_route(Net& net, vector<vector<int>>& H, vector<vector<int>>& V);
 
 // void Tree2Route(adjlist steinertree, GridMap gridmap) {
 
@@ -117,7 +118,7 @@ int main(int argc, char* argv[]) {
         
     input_file.close();
 
-/*---Init Route---*/
+/*---Stage 1: Best Steiner Route---*/
 
     cout << M << " " << N << endl;
     vector<vector<int>> super_horizontal(M, vector<int>(N - 1, 0));
@@ -168,6 +169,48 @@ int main(int argc, char* argv[]) {
         }
         cout << "\n";
     }
+
+/*---Stage 2: Rip-up Reroute---*/
+    const int test_id = 11;
+    Net& net = nets[test_id];
+
+    /* rip only */
+    Rip_net(net, super_horizontal, super_vertical);
+    // Print superimposed net count
+    cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
+    cout << "Horizontal Matrix:\n";
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N - 1; ++x) {
+            cout << super_horizontal[y][x] << " ";
+        }
+        cout << "\n";
+    }
+    cout << "\n";
+    cout << "Vertical Matrix:\n";
+    for (int y = 0; y < M - 1; ++y) {
+        for (int x = 0; x < N; ++x) {
+            cout << super_vertical[y][x] << " ";
+        }
+        cout << "\n";
+    }
+
+    /* route */
+    bool ok = Lee_route(net, super_horizontal, super_vertical);
+    if (!ok) {
+        cerr << "Lee_route failed for Net "<<test_id<<"\n";
+        Rip_net(net, super_horizontal, super_vertical);
+    }
+
+    MapAdjacencyToGridMap(net);                    // rebuild its bitmap
+
+    cout << "\n=== Net "<<test_id<<" after Lee_route ===\n";
+    PrintGridMap(net.best_steiner);
+
+    cout << "\n=== Super-imposed matrices after re-routing Net "<<test_id<<" ===\n";
+    cout << "Horizontal Matrix:\n";
+    for (int y=0;y<M;++y){ for(int x=0;x<N-1;++x) cout<<super_horizontal[y][x]<<" "; cout<<"\n"; }
+    cout << "\nVertical Matrix:\n";
+    for (int y=0;y<M-1;++y){ for(int x=0;x<N;++x) cout<<super_vertical[y][x]<<" "; cout<<"\n"; }
 
 
 
@@ -406,10 +449,6 @@ void Best_steiner_route(Net &net) {
     } while (do_flag);
 }
 
-void Best_steiner_obstacle_route(GridMap obstacle, Net n) {
-    GridMap best_steiner;
-    // Implement best Steiner tree logic with obstacles here
-}
 
 void Rip_up_reroute(GridMap gridmap, int seed) {
     // Implement rip up and reroute logic here
@@ -586,3 +625,74 @@ void PrintGridMap(const GridMap &grid) {
         cout << "\n";
     }
 }
+
+void Rip_net(Net& net, vector<vector<int>>& H, vector<vector<int>>& V) {
+    for (auto& kv : net.adjacency)               // each undirected edge once
+        for (Coord v : kv.second)
+            if (kv.first < v) {
+                (kv.first.y == v.y) ? --H[kv.first.y][min(kv.first.x, v.x)] : --V[min(kv.first.y, v.y)][kv.first.x];
+            }
+
+    net.adjacency.clear();
+    net.best_steiner = GridMap();                // clear its picture (optional)
+}
+
+bool Lee_route(Net& net, vector<vector<int>>& H, vector<vector<int>>& V) {
+    const int dx[4] = { 1, 0,-1, 0 };
+    const int dy[4] = { 0, 1, 0,-1 };
+
+    /* multi-source Lee for multi-terminal nets */
+    vector<Coord> pins(net.Gcells.begin(), net.Gcells.end());
+    DSU dsu(pins.size());
+    auto idx=[&](Coord c){ return int(find(pins.begin(), pins.end(), c)-pins.begin()); };
+
+    while (dsu.num_sets() > 1)
+    {
+        int src = dsu.first_set();
+        queue<Coord> q;
+        vector<vector<int>> dist(M, vector<int>(N, -1));
+        unordered_map<Coord,Coord,hash_pair> prev;
+
+        for (size_t i=0;i<pins.size();++i)
+            if (dsu.find(i)==src){
+                Coord c=pins[i];
+                dist[c.y][c.x]=0; q.push(c);
+            }
+
+        Coord meet{-1,-1};
+        while (!q.empty() && meet.x==-1){
+            Coord u=q.front(); q.pop();
+            for (int k=0;k<4;++k){
+                Coord v{u.x+dx[k], u.y+dy[k]};
+                if (v.x<0||v.x>=N||v.y<0||v.y>=M) continue;
+
+                bool horizontal = (k == 0 || k == 2);          // RIGHT or LEFT
+                bool blocked    = horizontal
+                                  ? H[u.y][min(u.x,v.x)] >= H_limit
+                                  : V[min(u.y,v.y)][u.x] >= V_limit;
+                if (blocked || dist[v.y][v.x]!=-1) continue;
+
+                dist[v.y][v.x]=dist[u.y][u.x]+1;
+                prev[v]=u; q.push(v);
+
+                auto it=find(pins.begin(),pins.end(),v);
+                if (it!=pins.end() && dsu.find(idx(*it))!=src){ meet=v; break; }
+            }
+        }
+        if (meet.x==-1) return false;               // no legal path
+
+        /* traceback – add edges & bump usage */
+        for (Coord cur=meet; prev.count(cur); cur=prev[cur]){
+            Coord par=prev[cur];
+            add_edge(net.adjacency, cur, par);
+            bool horiz = (cur.y == par.y);
+            if (horiz)
+                ++H[cur.y][min(cur.x,par.x)];
+            else
+                ++V[min(cur.y,par.y)][cur.x];
+        }
+        dsu.unite(src, dsu.find(idx(meet)));        // merge components
+    }
+    return true;
+}
+
