@@ -35,13 +35,16 @@ double GetTime(void);
 bool GetLine(istream &input_file, stringstream &line);
 void Zigzag_route(Net& n);
 void Best_steiner_route(Net& n);
-void Rip_up_reroute(GridMap gridmap, int seed);
+void Rip_up_reroute(vector<Net>& nets, vector<vector<int>>& H, vector<vector<int>>& V, int id_lo, int id_hi);
 Coord Search_nearest(Coord src, Direction dir, const unordered_set<Coord, hash_pair>& steiner_nodes);
 vector<pair<Coord, Coord>> find_cycle(const unordered_map<Coord, vector<Coord>, hash_pair>& adjacency);
 void MapAdjacencyToGridMap(Net &net);
 void PrintGridMap(const GridMap &grid);
 void Rip_net(Net& net, vector<vector<int>>& H, vector<vector<int>>& V);
 bool Lee_route(Net& net, vector<vector<int>>& H, vector<vector<int>>& V);
+inline bool h_over(int y,int x,const vector<vector<int>>& H) { return H[y][x] > H_limit; }
+inline bool v_over(int y,int x,const vector<vector<int>>& V) { return V[y][x] > V_limit; }
+
 
 // void Tree2Route(adjlist steinertree, GridMap gridmap) {
 
@@ -128,17 +131,6 @@ int main(int argc, char* argv[]) {
         cout << "Net " << i << ":\n";
         Zigzag_route(nets[i]);
         Best_steiner_route(nets[i]);
-        // print adjacency
-        cout << "Adjacency List:\n";
-        for (const auto& entry : nets[i].adjacency) {
-            const Coord& from = entry.first;
-            const vector<Coord>& neighbors = entry.second;
-            cout << "(" << from.x << "," << from.y << "): ";
-            for (const auto& to : neighbors) {
-                cout << "(" << to.x << "," << to.y << ") ";
-            }
-            cout << endl;
-        }
         MapAdjacencyToGridMap(nets[i]);
         // cout << "\nMapped Grid for Net " << nets[i].id << ":\n";
         // Accumulate usage count
@@ -152,7 +144,6 @@ int main(int argc, char* argv[]) {
                     ++super_vertical[y][x];
     }
 
-    // Print superimposed net count
     cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
     cout << "Horizontal Matrix:\n";
     for (int y = 0; y < M; ++y) {
@@ -171,47 +162,7 @@ int main(int argc, char* argv[]) {
     }
 
 /*---Stage 2: Rip-up Reroute---*/
-    const int test_id = 11;
-    Net& net = nets[test_id];
-
-    /* rip only */
-    Rip_net(net, super_horizontal, super_vertical);
-    // Print superimposed net count
-    cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
-    cout << "Horizontal Matrix:\n";
-    for (int y = 0; y < M; ++y) {
-        for (int x = 0; x < N - 1; ++x) {
-            cout << super_horizontal[y][x] << " ";
-        }
-        cout << "\n";
-    }
-    cout << "\n";
-    cout << "Vertical Matrix:\n";
-    for (int y = 0; y < M - 1; ++y) {
-        for (int x = 0; x < N; ++x) {
-            cout << super_vertical[y][x] << " ";
-        }
-        cout << "\n";
-    }
-
-    /* route */
-    bool ok = Lee_route(net, super_horizontal, super_vertical);
-    if (!ok) {
-        cerr << "Lee_route failed for Net "<<test_id<<"\n";
-        Rip_net(net, super_horizontal, super_vertical);
-    }
-
-    MapAdjacencyToGridMap(net);                    // rebuild its bitmap
-
-    cout << "\n=== Net "<<test_id<<" after Lee_route ===\n";
-    PrintGridMap(net.best_steiner);
-
-    cout << "\n=== Super-imposed matrices after re-routing Net "<<test_id<<" ===\n";
-    cout << "Horizontal Matrix:\n";
-    for (int y=0;y<M;++y){ for(int x=0;x<N-1;++x) cout<<super_horizontal[y][x]<<" "; cout<<"\n"; }
-    cout << "\nVertical Matrix:\n";
-    for (int y=0;y<M-1;++y){ for(int x=0;x<N;++x) cout<<super_vertical[y][x]<<" "; cout<<"\n"; }
-
+    Rip_up_reroute(nets, super_horizontal, super_vertical, stoi(argv[3]), stoi(argv[4]));
 
 
 
@@ -229,8 +180,6 @@ int main(int argc, char* argv[]) {
         }
         output_file << "\n";
     }
-    output_file << "\n";
-
     output_file << "Vertical Matrix:\n";
     for (int y = 0; y < M - 1; ++y) {
         for (int x = 0; x < N; ++x) {
@@ -450,9 +399,6 @@ void Best_steiner_route(Net &net) {
 }
 
 
-void Rip_up_reroute(GridMap gridmap, int seed) {
-    // Implement rip up and reroute logic here
-}
 
 Coord Search_nearest(Coord src, Direction dir, const unordered_set<Coord, hash_pair>& steiner_nodes) {
     Coord invalid = {-1, -1};
@@ -627,72 +573,182 @@ void PrintGridMap(const GridMap &grid) {
 }
 
 void Rip_net(Net& net, vector<vector<int>>& H, vector<vector<int>>& V) {
-    for (auto& kv : net.adjacency)               // each undirected edge once
-        for (Coord v : kv.second)
-            if (kv.first < v) {
-                (kv.first.y == v.y) ? --H[kv.first.y][min(kv.first.x, v.x)] : --V[min(kv.first.y, v.y)][kv.first.x];
-            }
-
+    for (auto& kv : net.adjacency)
+        for (const Coord& w : kv.second)
+            if (kv.first.y == w.y && kv.first.x <  w.x)       // horizontal once
+                --H[kv.first.y][kv.first.x];
+            else if (kv.first.x == w.x && kv.first.y < w.y)   // vertical once
+                --V[kv.first.y][kv.first.x];
     net.adjacency.clear();
-    net.best_steiner = GridMap();                // clear its picture (optional)
+    net.best_steiner = GridMap{};
 }
 
-bool Lee_route(Net& net, vector<vector<int>>& H, vector<vector<int>>& V) {
-    const int dx[4] = { 1, 0,-1, 0 };
-    const int dy[4] = { 0, 1, 0,-1 };
+/* identical Lee router you debugged (horizontal-test version) */
+bool Lee_route(Net& net,
+               vector<vector<int>>& H,
+               vector<vector<int>>& V)
+{
+    static const int dx[4]={ 1, 0,-1, 0};
+    static const int dy[4]={ 0, 1, 0,-1};
 
-    /* multi-source Lee for multi-terminal nets */
     vector<Coord> pins(net.Gcells.begin(), net.Gcells.end());
     DSU dsu(pins.size());
-    auto idx=[&](Coord c){ return int(find(pins.begin(), pins.end(), c)-pins.begin()); };
+    auto idx=[&](Coord c){ return int(find(pins.begin(),pins.end(),c)-pins.begin()); };
 
-    while (dsu.num_sets() > 1)
+    while (dsu.num_sets()>1)
     {
         int src = dsu.first_set();
         queue<Coord> q;
-        vector<vector<int>> dist(M, vector<int>(N, -1));
+        vector<vector<int>> dist(M, vector<int>(N,-1));
         unordered_map<Coord,Coord,hash_pair> prev;
 
-        for (size_t i=0;i<pins.size();++i)
-            if (dsu.find(i)==src){
-                Coord c=pins[i];
-                dist[c.y][c.x]=0; q.push(c);
+        for(size_t i=0;i<pins.size();++i)
+            if(dsu.find(i)==src){
+                Coord c=pins[i]; dist[c.y][c.x]=0; q.push(c);
             }
 
         Coord meet{-1,-1};
-        while (!q.empty() && meet.x==-1){
+        while(!q.empty()&&meet.x==-1){
             Coord u=q.front(); q.pop();
-            for (int k=0;k<4;++k){
-                Coord v{u.x+dx[k], u.y+dy[k]};
-                if (v.x<0||v.x>=N||v.y<0||v.y>=M) continue;
+            for(int k=0;k<4;++k){
+                Coord v{u.x+dx[k],u.y+dy[k]};
+                if(v.x<0||v.x>=N||v.y<0||v.y>=M) continue;
 
-                bool horizontal = (k == 0 || k == 2);          // RIGHT or LEFT
-                bool blocked    = horizontal
-                                  ? H[u.y][min(u.x,v.x)] >= H_limit
-                                  : V[min(u.y,v.y)][u.x] >= V_limit;
-                if (blocked || dist[v.y][v.x]!=-1) continue;
+                bool horiz = (k==0||k==2);
+                int  curr  = horiz ? H[u.y][min(u.x,v.x)]      // current usage
+                                     : V[min(u.y,v.y)][u.x];
+                bool blocked = (curr + 1 > (horiz ? H_limit : V_limit));
+                if(blocked||dist[v.y][v.x]!=-1) continue;
 
                 dist[v.y][v.x]=dist[u.y][u.x]+1;
                 prev[v]=u; q.push(v);
 
                 auto it=find(pins.begin(),pins.end(),v);
-                if (it!=pins.end() && dsu.find(idx(*it))!=src){ meet=v; break; }
+                if(it!=pins.end()&&dsu.find(idx(*it))!=src){ meet=v; break; }
             }
         }
-        if (meet.x==-1) return false;               // no legal path
+        if(meet.x==-1) return false;
 
-        /* traceback – add edges & bump usage */
-        for (Coord cur=meet; prev.count(cur); cur=prev[cur]){
+        for(Coord cur=meet; prev.count(cur); cur=prev[cur]){
             Coord par=prev[cur];
-            add_edge(net.adjacency, cur, par);
-            bool horiz = (cur.y == par.y);
-            if (horiz)
-                ++H[cur.y][min(cur.x,par.x)];
-            else
-                ++V[min(cur.y,par.y)][cur.x];
+            add_edge(net.adjacency,cur,par);
+            bool horiz = (cur.y==par.y);
+            if(horiz) ++H[cur.y][min(cur.x,par.x)];
+            else      ++V[min(cur.y,par.y)][cur.x];
         }
-        dsu.unite(src, dsu.find(idx(meet)));        // merge components
+        dsu.unite(src, dsu.find(idx(meet)));
     }
     return true;
 }
 
+/* does net `n` currently touch any overflowing edge? */
+bool net_has_overflow(const Net& net, const vector<vector<int>>& H, const vector<vector<int>>& V) {
+    for (auto& kv : net.adjacency)
+        for (const Coord& w : kv.second){
+            if (kv.first.y == w.y && kv.first.x < w.x){
+                if (h_over(kv.first.y, kv.first.x, H)) return true;
+            } else if (kv.first.x == w.x && kv.first.y < w.y){
+                if (v_over(kv.first.y, kv.first.x, V)) return true;
+            }
+        }
+    return false;
+}
+
+/* find all nets that still overflow */
+vector<int> collect_overflow_nets(const vector<Net>& nets, int id_lo, int id_hi, const vector<vector<int>>& H, const vector<vector<int>>& V) {
+    vector<int> res;
+    for(int id=id_lo; id<=id_hi; ++id)
+        if(nets[id].id!=-1 && net_has_overflow(nets[id],H,V))
+            res.push_back(id);
+    return res;
+}
+
+/*─────────────────────────  Rip-up & Reroute  ─────────────────────────*/
+void Rip_up_reroute(vector<Net>&            nets,
+                    vector<vector<int>>&    H,      // super_horizontal
+                    vector<vector<int>>&    V,      // super_vertical
+                    int                     id_lo,  // first net ID
+                    int                     id_hi)  // last  net ID (incl.)
+{
+    const int MAX_TOP_ITER = 30;
+    std::mt19937 rng{12345};               // reproducible shuffle
+
+    for (int iter = 1; iter <= MAX_TOP_ITER; ++iter)
+    {
+        /* 1. collect nets that still overflow */
+        vector<int> ov = collect_overflow_nets(nets, id_lo, id_hi, H, V);
+        if (ov.empty()) {
+            cout << "\nRRR converged in " << iter-1
+                 << " iterations – no overflow edges left.\n";
+            return;
+        }
+
+        cout << "\n──────── Iteration " << iter
+             << "  (overflow nets = " << ov.size() << ") ────────\n   nets:";
+        for (int id : ov) cout << " N" << id;  cout << '\n';
+
+        shuffle(ov.begin(), ov.end(), rng);
+        deque<int> dq(ov.begin(), ov.end());
+
+        /* 2. work through the deque */
+        while (!dq.empty())
+        {
+            int cur = dq.front(); dq.pop_front();
+            vector<int> helpers;                 // helpers for this cur
+
+            bool routed = false;
+            while (true)
+            {
+                Rip_net(nets[cur], H, V);        // rip before each try
+                cout << "▶  trying net N" << cur << " … ";
+
+                if (Lee_route(nets[cur], H, V)) { /* SUCCESS */
+                    cout << "SUCCESS\n";
+                    routed = true;
+                    break;
+                }
+
+                /* find earliest still-routed helper (≠ cur) */
+                int helper = -1;
+                deque<int> tmp;
+                while (!dq.empty()) {
+                    int cand = dq.front(); dq.pop_front();
+                    if (cand != cur && !nets[cand].adjacency.empty()) {
+                        helper = cand; break;
+                    }
+                    tmp.push_back(cand);          // keep order
+                }
+                for (auto it = tmp.rbegin(); it != tmp.rend(); ++it)
+                    dq.push_front(*it);
+
+                if (helper == -1) {               /* dead-end */
+                    cout << "FAILED – no routed helper left, give up N"
+                         << cur << '\n';
+                    break;
+                }
+
+                cout << "FAILED – rip helper N" << helper << " and retry\n";
+                Rip_net(nets[helper], H, V);
+                helpers.push_back(helper);        // remember FIFO
+            }
+
+            /* 3. put helpers back in FIFO order just after cur */
+            for (auto it = helpers.rbegin(); it != helpers.rend(); ++it)
+                dq.push_front(*it);               // helpers: H1, H2, …
+
+            if (routed)                           // cur done → proceed
+                continue;
+            /* cur gave up: helpers are queued, but cur is not re-inserted */
+        }
+
+        /* 4. overflow stats */
+        int h_ov = 0, v_ov = 0;
+        for (int y=0;y<M;++y)     for(int x=0;x<N-1;++x) if (h_over(y,x,H)) ++h_ov;
+        for (int y=0;y<M-1;++y)   for(int x=0;x<N;  ++x) if (v_over(y,x,V)) ++v_ov;
+        cout << "   remaining overflow edges → H = "
+             << h_ov << ", V = " << v_ov << '\n';
+    }
+
+    cout << "\nReached MAX_TOP_ITER (" << MAX_TOP_ITER
+         << "); overflow may still remain.\n";
+}
