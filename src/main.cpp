@@ -164,6 +164,31 @@ int main(int argc, char* argv[]) {
 /*---Stage 2: Rip-up Reroute---*/
     Rip_up_reroute(nets, super_horizontal, super_vertical, stoi(argv[3]), stoi(argv[4]));
 
+    // Print all net gridmap
+    cout << "\nFinal GridMap (Edge Usage Count):\n";
+    for (const auto& net : nets) {
+        cout << "Net " << net.id << ":\n";
+        PrintGridMap(net.best_steiner);
+    }
+
+    cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
+    cout << "Horizontal Matrix:\n";
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N - 1; ++x) {
+            cout << super_horizontal[y][x] << " ";
+        }
+        cout << "\n";
+    }
+    cout << "\n";
+    cout << "Vertical Matrix:\n";
+    for (int y = 0; y < M - 1; ++y) {
+        for (int x = 0; x < N; ++x) {
+            cout << super_vertical[y][x] << " ";
+        }
+        cout << "\n";
+    }
+
+
 
 
 /*---Write result to output file*/
@@ -285,6 +310,7 @@ static void erase_edge(std::unordered_map<Coord, std::vector<Coord>, hash_pair> 
 void Best_steiner_route(Net &net) {
     // ─── Hard‑reset any pre‑existing Steiner points so each run
     //      starts with *only* the true terminals. ────────────────
+    net.steiner_nodes.clear();
     int   best_gain  = std::numeric_limits<int>::min();
     Coord best_coord = { -1, -1 };
 
@@ -663,19 +689,56 @@ vector<int> collect_overflow_nets(const vector<Net>& nets, int id_lo, int id_hi,
     return res;
 }
 
+
+/* helper: add one unit-length edge into H / V usage matrices */
+inline void add_usage(const Coord& a,const Coord& b,
+                      vector<vector<int>>& H,
+                      vector<vector<int>>& V)
+{
+    if (a.y == b.y) ++H[a.y][std::min(a.x,b.x)];
+    else            ++V[std::min(a.y,b.y)][a.x];
+}
+
+inline void print_usage(const vector<vector<int>>& H,
+                        const vector<vector<int>>& V,
+                        const string& tag)
+{
+    /* count current over-capacity edges */
+    int h_ov = 0, v_ov = 0;
+    for (int y = 0; y < M;     ++y)
+        for (int x = 0; x < N-1; ++x)
+            if (H[y][x] > H_limit) ++h_ov;
+    for (int y = 0; y < M-1;   ++y)
+        for (int x = 0; x < N;   ++x)
+            if (V[y][x] > V_limit) ++v_ov;
+
+    cout << tag << "  (overflow H=" << h_ov << ", V=" << v_ov << ")\n";
+    cout << "Horizontal Matrix:\n";
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N - 1; ++x) cout << H[y][x] << ' ';
+        cout << '\n';
+    }
+    cout << "Vertical Matrix:\n";
+    for (int y = 0; y < M - 1; ++y) {
+        for (int x = 0; x < N; ++x)   cout << V[y][x] << ' ';
+        cout << '\n';
+    }
+    cout << flush;
+}
+
 /*─────────────────────────  Rip-up & Reroute  ─────────────────────────*/
 void Rip_up_reroute(vector<Net>&            nets,
                     vector<vector<int>>&    H,      // super_horizontal
                     vector<vector<int>>&    V,      // super_vertical
-                    int                     id_lo,  // first net ID
-                    int                     id_hi)  // last  net ID (incl.)
+                    int                     id_lo,
+                    int                     id_hi)
 {
-    const int MAX_TOP_ITER = 30;
-    std::mt19937 rng{12345};               // reproducible shuffle
+    const int MAX_TOP_ITER = 1000;
+    std::mt19937 rng{12345};
 
     for (int iter = 1; iter <= MAX_TOP_ITER; ++iter)
     {
-        /* 1. collect nets that still overflow */
+        /* 1 ─ collect nets that still overflow */
         vector<int> ov = collect_overflow_nets(nets, id_lo, id_hi, H, V);
         if (ov.empty()) {
             cout << "\nRRR converged in " << iter-1
@@ -685,25 +748,32 @@ void Rip_up_reroute(vector<Net>&            nets,
 
         cout << "\n──────── Iteration " << iter
              << "  (overflow nets = " << ov.size() << ") ────────\n   nets:";
-        for (int id : ov) cout << " N" << id;  cout << '\n';
+        for (int id: ov) cout << " N" << id; cout << '\n';
 
         shuffle(ov.begin(), ov.end(), rng);
         deque<int> dq(ov.begin(), ov.end());
 
-        /* 2. work through the deque */
+        bool dead_end_this_iter = false;          // did we give-up any net?
+        vector<int> postponed;               
+
+        print_usage(H, V, "[Start]");
+
+        /* 2 ─ work through queue */
         while (!dq.empty())
         {
             int cur = dq.front(); dq.pop_front();
-            vector<int> helpers;                 // helpers for this cur
+            vector<int> helpers;
 
             bool routed = false;
             while (true)
             {
-                Rip_net(nets[cur], H, V);        // rip before each try
+                Rip_net(nets[cur], H, V);
                 cout << "▶  trying net N" << cur << " … ";
 
-                if (Lee_route(nets[cur], H, V)) { /* SUCCESS */
+                if (Lee_route(nets[cur], H, V)) {
                     cout << "SUCCESS\n";
+                    MapAdjacencyToGridMap(nets[cur]);
+//                    print_usage(H, V, "[AFTER LEE N" + to_string(cur) + " ✓]");
                     routed = true;
                     break;
                 }
@@ -718,35 +788,62 @@ void Rip_up_reroute(vector<Net>&            nets,
                     }
                     tmp.push_back(cand);          // keep order
                 }
-                for (auto it = tmp.rbegin(); it != tmp.rend(); ++it)
-                    dq.push_front(*it);
+                while (!tmp.empty()){ dq.push_front(tmp.back()); tmp.pop_back(); }
 
-                if (helper == -1) {               /* dead-end */
-                    cout << "FAILED – no routed helper left, give up N"
-                         << cur << '\n';
-                    break;
+                if (helper == -1) {               // dead-end for this net
+                    cout << "FAILED – no routed helper left; "
+                         << "postpone N" << cur << '\n';
+                    dead_end_this_iter = true;
+                    postponed.push_back(cur);       // ← NEW
+                    break;                        // leave cur ripped
                 }
 
                 cout << "FAILED – rip helper N" << helper << " and retry\n";
                 Rip_net(nets[helper], H, V);
-                helpers.push_back(helper);        // remember FIFO
+//                print_usage(H, V, "[AFTER RIP N" + to_string(helper) + ']');
+                helpers.push_back(helper);
             }
 
-            /* 3. put helpers back in FIFO order just after cur */
+            /* push helpers (FIFO) right after cur */
             for (auto it = helpers.rbegin(); it != helpers.rend(); ++it)
-                dq.push_front(*it);               // helpers: H1, H2, …
+                dq.push_front(*it);
 
-            if (routed)                           // cur done → proceed
-                continue;
-            /* cur gave up: helpers are queued, but cur is not re-inserted */
+            if (routed) continue;
         }
 
-        /* 4. overflow stats */
+        /* 3 ─ if any net was postponed, FORCE-ROUTE all unrouted nets */
+        if (dead_end_this_iter) {
+            cout << "   forcing Steiner route for postponed nets …\n";
+            for (int id : postponed)
+            {
+                /* id already has adjacency=={} because we left it ripped */
+                Zigzag_route(nets[id]);
+                Best_steiner_route(nets[id]);          // ignores congestion
+                MapAdjacencyToGridMap(nets[id]);       // build bitmap
+            
+                /* bump usage for every unit edge in the bitmap */
+                for (int y=0; y<M; ++y)
+                    for (int x=0; x<N-1; ++x)
+                        if (nets[id].best_steiner.horizontal[y][x])
+                            ++H[y][x];
+                for (int y=0; y<M-1; ++y)
+                    for (int x=0; x<N;   ++x)
+                        if (nets[id].best_steiner.vertical[y][x])
+                            ++V[y][x];
+            
+//                print_usage(H, V, "[AFTER STEINER N" + std::to_string(id) + ']');
+            }
+        }
+
+
+        /* 4 ─ overflow stats */
         int h_ov = 0, v_ov = 0;
         for (int y=0;y<M;++y)     for(int x=0;x<N-1;++x) if (h_over(y,x,H)) ++h_ov;
         for (int y=0;y<M-1;++y)   for(int x=0;x<N;  ++x) if (v_over(y,x,V)) ++v_ov;
         cout << "   remaining overflow edges → H = "
              << h_ov << ", V = " << v_ov << '\n';
+
+        if (dead_end_this_iter) continue;    // start next top-level iteration
     }
 
     cout << "\nReached MAX_TOP_ITER (" << MAX_TOP_ITER
