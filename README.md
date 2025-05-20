@@ -15,8 +15,8 @@ Group 7, Laura, Patata.
 ## Feature
 
 - Sequential method
-- Stage 1: Find best 1-steiner by Kahng and Robin method for each net, which give the smallest wirelength.
-- Stage 2: Try to fix overflow by Rip-up Reroute.
+- Stage 1: Find best 1-steiner by Kahng and Robin method for each net O(N3), which give the smallest wirelength.
+- Stage 2: Try to fix overflow by Rip-up Reroute, reroute by Lee algorithm O(MN).
 
 
 ## Experiment Result
