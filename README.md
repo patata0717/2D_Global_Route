@@ -32,3 +32,11 @@ Iterations cost = 20, Wirelength = 95
 - Random seed = 48763
 
 Iterations cost = 110, Wirelength = 96
+
+- True Random
+
+Iterations cost = 171, Wirelength = 97
+
+Iterations cost = 72, Wirelength = 96
+
+Iterations cost = 33, Wirelength = 96

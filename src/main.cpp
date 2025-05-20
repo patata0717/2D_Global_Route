@@ -761,7 +761,8 @@ void Rip_up_reroute(vector<Net>&            nets,
                     int                     id_hi)
 {
     const int MAX_TOP_ITER = 200;
-    std::mt19937 rng{48763};
+    // std::mt19937 rng{12345};
+    std::mt19937 rng{std::random_device{}()};
 
     for (int iter = 1; iter <= MAX_TOP_ITER; ++iter)
     {

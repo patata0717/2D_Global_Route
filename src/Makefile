@@ -1,6 +1,6 @@
 CC = g++
-# CFLAGS = -std=c++11 -O3 -I /usr/local/include/boost/
-CFLAGS = -std=c++11 -g
+CFLAGS = -std=c++11 -O3 -I /usr/local/include/boost/ -D_GLIBCXX_USE_CXX11_ABI=0
+# CFLAGS = -std=c++11 -g
 
 OBJS = main.o datastructure.o
 
