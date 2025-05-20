@@ -15,6 +15,7 @@ if len(sys.argv) != 2:
     sys.exit(1)
 
 filename = sys.argv[1]
+# input_path = f"../output/{filename}.out"
 input_path = f"../output/{filename}.out"
 output_path = f"../visual/{filename}.png"
 

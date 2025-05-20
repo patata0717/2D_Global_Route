@@ -50,7 +50,7 @@ inline bool v_over(int y,int x,const vector<vector<int>>& V) { return V[y][x] > 
 
 int main(int argc, char* argv[]) {
     if (argc < 5) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> <from> <to>\n";
+        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> <bottom_layer> <top_layer>\n";
         return 1;
     }
 
@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
     vector<vector<int>> super_horizontal(M, vector<int>(N - 1, 0));
     vector<vector<int>> super_vertical(M - 1, vector<int>(N, 0));
 
-    for (int i = stoi(argv[3]); i <= stoi(argv[4]); i++) {
+    for (int i = 1; i <= 16; i++) {
         cout << "Net " << i << ":\n";
         Zigzag_route(nets[i]);
         Best_steiner_route(nets[i]);
@@ -161,15 +161,35 @@ int main(int argc, char* argv[]) {
         cout << "\n";
     }
 
-/*---Stage 2: Rip-up Reroute---*/
-    Rip_up_reroute(nets, super_horizontal, super_vertical, stoi(argv[3]), stoi(argv[4]));
 
+    long long stage1_len = 0;
+    for (const auto& row : super_horizontal)
+        for (int v : row) stage1_len += v;
+    for (const auto& row : super_vertical)
+        for (int v : row) stage1_len += v;
+
+/*---Stage 2: Rip-up Reroute---*/
+    Rip_up_reroute(nets, super_horizontal, super_vertical, 1, 16);
+
+    // reset super_horizontal and super_vertical
+    super_horizontal.assign(M, vector<int>(N - 1, 0));
+    super_vertical.assign(M - 1, vector<int>(N, 0));
     // Print all net gridmap
     cout << "\nFinal GridMap (Edge Usage Count):\n";
-    for (const auto& net : nets) {
-        cout << "Net " << net.id << ":\n";
-        PrintGridMap(net.best_steiner);
+    for (int i = 1; i <= stoi(argv[4]); i++) {
+        cout << "Net " << i << ":\n";
+        PrintGridMap(nets[i].best_steiner); cout << endl;
+        for (int y = 0; y < M; ++y)
+            for (int x = 0; x < N - 1; ++x)
+                if (nets[i].best_steiner.horizontal[y][x])
+                    ++super_horizontal[y][x];
+        for (int y = 0; y < M - 1; ++y)
+            for (int x = 0; x < N; ++x)
+                if (nets[i].best_steiner.vertical[y][x])
+                    ++super_vertical[y][x];
     }
+
+
 
     cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
     cout << "Horizontal Matrix:\n";
@@ -188,6 +208,13 @@ int main(int argc, char* argv[]) {
         cout << "\n";
     }
 
+    long long stage2_len = 0;
+    for (const auto& row : super_horizontal)
+        for (int v : row) stage2_len += v;
+    for (const auto& row : super_vertical)
+        for (int v : row) stage2_len += v;
+    cout << "Stage1 wire length = " << stage1_len << '\n';
+    cout << "Stage2 wire length = " << stage2_len << '\n';
 
 
 
@@ -588,7 +615,7 @@ void PrintGridMap(const GridMap &grid) {
         }
         cout << "\n";
     }
-
+    cout << "\n";
     cout << "Vertical Matrix:\n";
     for (int y = 0; y < M - 1; ++y) {
         for (int x = 0; x < N; ++x) {
@@ -733,8 +760,8 @@ void Rip_up_reroute(vector<Net>&            nets,
                     int                     id_lo,
                     int                     id_hi)
 {
-    const int MAX_TOP_ITER = 1000;
-    std::mt19937 rng{12345};
+    const int MAX_TOP_ITER = 200;
+    std::mt19937 rng{48763};
 
     for (int iter = 1; iter <= MAX_TOP_ITER; ++iter)
     {
@@ -750,13 +777,24 @@ void Rip_up_reroute(vector<Net>&            nets,
              << "  (overflow nets = " << ov.size() << ") ────────\n   nets:";
         for (int id: ov) cout << " N" << id; cout << '\n';
 
+
+        // reset H, V to 0
+        for (int y = 0; y < M; ++y) for (int x = 0; x < N - 1; ++x) H[y][x] = 0;
+        for (int y = 0; y < M - 1; ++y) for (int x = 0; x < N; ++x) V[y][x] = 0;
+        for (int i = 1; i <= 16; i++) {
+            for (int y = 0; y < M; ++y) for (int x = 0; x < N - 1; ++x) if (nets[i].best_steiner.horizontal[y][x]) ++H[y][x];
+            for (int y = 0; y < M - 1; ++y) for (int x = 0; x < N; ++x) if (nets[i].best_steiner.vertical[y][x]) ++V[y][x];
+        }
+
+
+
+
         shuffle(ov.begin(), ov.end(), rng);
         deque<int> dq(ov.begin(), ov.end());
 
         bool dead_end_this_iter = false;          // did we give-up any net?
         vector<int> postponed;               
 
-        print_usage(H, V, "[Start]");
 
         /* 2 ─ work through queue */
         while (!dq.empty())
@@ -821,7 +859,6 @@ void Rip_up_reroute(vector<Net>&            nets,
                 Best_steiner_route(nets[id]);          // ignores congestion
                 MapAdjacencyToGridMap(nets[id]);       // build bitmap
             
-                /* bump usage for every unit edge in the bitmap */
                 for (int y=0; y<M; ++y)
                     for (int x=0; x<N-1; ++x)
                         if (nets[id].best_steiner.horizontal[y][x])
@@ -831,7 +868,7 @@ void Rip_up_reroute(vector<Net>&            nets,
                         if (nets[id].best_steiner.vertical[y][x])
                             ++V[y][x];
             
-//                print_usage(H, V, "[AFTER STEINER N" + std::to_string(id) + ']');
+                print_usage(H, V, "[AFTER STEINER N" + std::to_string(id) + ']');
             }
         }
 
