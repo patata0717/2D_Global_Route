@@ -22,6 +22,10 @@ For all imgae:
 
 2D_Global_Route/src$> ./visual.sh
 
+Input filename? > <output_header>
+
+Input filename? > sample
+
 ## Feature
 
 - Sequential method
