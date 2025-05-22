@@ -20,7 +20,7 @@ For all imgae:
 
 16 images to display individual nets
 
-2D_Global_Route/src$> ./visual.py
+2D_Global_Route/src$> ./visual.sh
 
 ## Feature
 
