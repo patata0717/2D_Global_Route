@@ -61,3 +61,7 @@ Iterations cost = 33, Wirelength = 96
 ![imgur](https://ibb.co/23DY6zFj)
 
 ![imgur](https://ibb.co/9k6Nwcsw)
+
+## Quality Evaluation
+
+This algorithm stops when a valid result is found, For evaluate solution quality and runtime, you can run this program many times and analyse iterations cost, wirelength...
