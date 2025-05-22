@@ -1,111 +1,116 @@
+#!/usr/bin/env python3
 import matplotlib
-matplotlib.use("Agg")  # Use non-GUI backend
+matplotlib.use("Agg")   # non-GUI backend
 
 import matplotlib.pyplot as plt
-import numpy as np
-import re
-import sys
-import os
+import re, sys, os
 from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-# --- Step 1: Get filename from argument ---
+# ─── CONFIG: fixed grid size ─────────────────────────────────────────────────
+M, N = 4, 5   # rows, columns
+
+# ─── ARGS & PATHS ─────────────────────────────────────────────────────────────
 if len(sys.argv) != 2:
     print("Usage: python3 visualizer.py <filename_without_extension>")
     sys.exit(1)
 
-filename = sys.argv[1]
-# input_path = f"../output/{filename}.out"
-input_path = f"../output/{filename}.out"
-output_path = f"../visual/{filename}.png"
+base     = sys.argv[1]
+in_path  = f"../output/{base}.out"
+out_path = f"../visual/{base}.png"
 
-# --- Step 2: Read and parse the file ---
-if not os.path.exists(input_path):
-    print(f"Input file not found: {input_path}")
+if not os.path.exists(in_path):
+    print(f"Input file not found: {in_path}")
     sys.exit(1)
 
-with open(input_path, "r") as f:
-    lines = f.readlines()
+# ─── READ & PARSE ONE MATRIX PAIR ─────────────────────────────────────────────
+horiz = []
+vert  = []
+state = 0   # 0=seek H tag, 1=read H, 2=seek V tag, 3=read V
 
-lines = [line.strip() for line in lines if line.strip()]
+with open(in_path) as f:
+    for raw in f:
+        line = raw.strip()
+        if not line:
+            continue
 
-M = int(re.search(r"\d+", lines[0]).group())  # rows
-N = int(re.search(r"\d+", lines[1]).group())  # columns
+        if state == 0 and line.lower().startswith("horizontal matrix"):
+            state = 1
+            continue
 
-horizontal = []
-vertical = []
-mode = None
-for line in lines[2:]:
-    if "Horizontal" in line:
-        mode = "horizontal"
-        continue
-    elif "Vertical" in line:
-        mode = "vertical"
-        continue
+        if state == 1:
+            if re.fullmatch(r"[0-9 ]+", line):
+                horiz.append(list(map(int, line.split())))
+                if len(horiz) == M:
+                    state = 2
+            continue
 
-    nums = list(map(int, line.split()))
-    if mode == "horizontal":
-        horizontal.append(nums)
-    elif mode == "vertical":
-        vertical.append(nums)
+        if state == 2 and line.lower().startswith("vertical matrix"):
+            state = 3
+            continue
 
-# --- Step 3: Plot the grid ---
+        if state == 3:
+            if re.fullmatch(r"[0-9 ]+", line):
+                vert.append(list(map(int, line.split())))
+                if len(vert) == M - 1:
+                    break
+            continue
+
+# sanity check
+if len(horiz) != M or len(vert) != M-1:
+    sys.exit(f"Parsing error: got {len(horiz)}×{len(horiz[0])} horiz and {len(vert)}×{len(vert[0])} vert, expected {M}×{N-1} and {M-1}×{N}")
+
+# ─── PLOTTING ─────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(N, M))
-ax.set_xlim(-0.5, N - 0.5)
-ax.set_ylim(-0.5, M - 0.5)  # (0,0) bottom-left
-ax.set_aspect('equal')
+ax.set_xlim(-0.5, N-0.5)
+ax.set_ylim(-0.5, M-0.5)
+ax.set_aspect("equal")
 
-# Draw grid points
+# draw grid points
 for y in range(M):
     for x in range(N):
-        ax.plot(x, y, 'ko', markersize=4)
+        ax.plot(x, y, 'ko', ms=4)
 
-# Choose a single colormap, but two different normalizations
-cmaph = plt.cm.Greens
-cmapv = plt.cm.Reds
-norm_h = Normalize(vmin=0, vmax=4, clip=True)  # horizontal: 0–4
-norm_v = Normalize(vmin=0, vmax=3, clip=True)  # vertical:   0–3
+# fixed colormap ranges
+cmaph, cmapv = plt.cm.Greens, plt.cm.Reds
+norm_h = Normalize(vmin=0, vmax=4, clip=True)  # always 0–4
+norm_v = Normalize(vmin=0, vmax=3, clip=True)  # always 0–3
 
-# Draw horizontal edges
+# draw horizontal edges
 for y in range(M):
-    for x in range(N - 1):
-        count = horizontal[y][x]
-        color = cmaph(norm_h(count))
-        ax.plot([x, x + 1], [y, y], color=color, linewidth=2)
-        ax.text(x + 0.5, y - 0.2, str(count),
+    for x in range(N-1):
+        c = horiz[y][x]
+        ax.plot([x, x+1], [y, y],
+                color=cmaph(norm_h(c)), lw=2)
+        ax.text(x+0.5, y-0.2, str(c),
                 ha='center', va='center', fontsize=8)
 
-# Draw vertical edges
-for y in range(M - 1):
+# draw vertical edges
+for y in range(M-1):
     for x in range(N):
-        count = vertical[y][x]
-        color = cmapv(norm_v(count))
-        ax.plot([x, x], [y, y + 1], color=color, linewidth=2)
-        ax.text(x + 0.1, y + 0.5, str(count),
+        c = vert[y][x]
+        ax.plot([x, x], [y, y+1],
+                color=cmapv(norm_v(c)), lw=2)
+        ax.text(x+0.1, y+0.5, str(c),
                 ha='left', va='center', fontsize=8)
 
-# Hide axes
 ax.axis('off')
 
-# --- Step 4: Add two colorbars ---
-# Horizontal colorbar
+# two small colourbars, matching the fixed ranges
 sm_h = plt.cm.ScalarMappable(cmap=cmaph, norm=norm_h)
 sm_h.set_array([])
-# Vertical colorbar
 sm_v = plt.cm.ScalarMappable(cmap=cmapv, norm=norm_v)
 sm_v.set_array([])
 
 divider = make_axes_locatable(ax)
-cax_h = divider.append_axes("right", size="5%", pad=0.05)
-cbar_h = plt.colorbar(sm_h, cax=cax_h)
-cbar_h.set_label("Horizontal Usage Count (0–4)")
+cax1 = divider.append_axes("right", size="5%", pad=0.05)
+cax2 = divider.append_axes("right", size="5%", pad=0.7)
+plt.colorbar(sm_h, cax=cax1, label="Horizontal (0–4)")
+plt.colorbar(sm_v, cax=cax2, label="Vertical (0–3)")
 
-cax_v = divider.append_axes("right", size="5%", pad=0.7)
-cbar_v = plt.colorbar(sm_v, cax=cax_v)
-cbar_v.set_label("Vertical Usage Count (0–3)")
-
-# Title & save
-plt.title(f"Superimposed Routing Grid ({M}×{N})")
+plt.title(f"Routing Grid ({M}×{N})")
 plt.tight_layout()
-plt.savefig(output_path)
-print(f"Grid image saved to {output_path}")
+
+os.makedirs(os.path.dirname(out_path), exist_ok=True)
+plt.savefig(out_path)
+print(f"Saved image to {out_path}")

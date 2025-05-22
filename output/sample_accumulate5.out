@@ -1,0 +1,12 @@
+Accumulate for net 5:
+Horizontal Matrix:
+1 0 1 1 
+1 1 1 1 
+4 3 1 0 
+0 1 1 0 
+
+Vertical Matrix:
+1 0 1 2 1 
+2 0 2 0 0 
+1 0 1 0 0 
+

@@ -49,8 +49,8 @@ inline bool v_over(int y,int x,const vector<vector<int>>& V) { return V[y][x] > 
 // void Tree2Route(adjlist steinertree, GridMap gridmap) {
 
 int main(int argc, char* argv[]) {
-    if (argc < 5) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> <bottom_layer> <top_layer>\n";
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file>\n";
         return 1;
     }
 
@@ -162,6 +162,7 @@ int main(int argc, char* argv[]) {
     }
 
 
+    // Calc stage 1 wirelength
     long long stage1_len = 0;
     for (const auto& row : super_horizontal)
         for (int v : row) stage1_len += v;
@@ -171,14 +172,51 @@ int main(int argc, char* argv[]) {
 /*---Stage 2: Rip-up Reroute---*/
     Rip_up_reroute(nets, super_horizontal, super_vertical, 1, 16);
 
+
+/*---Write result to output file*/
     // reset super_horizontal and super_vertical
     super_horizontal.assign(M, vector<int>(N - 1, 0));
     super_vertical.assign(M - 1, vector<int>(N, 0));
     // Print all net gridmap
     cout << "\nFinal GridMap (Edge Usage Count):\n";
-    for (int i = 1; i <= stoi(argv[4]); i++) {
-        cout << "Net " << i << ":\n";
-        PrintGridMap(nets[i].best_steiner); cout << endl;
+
+    // argv[2] might be "../output/sample.out"
+    std::string full = argv[2];
+    auto dot = full.find_last_of('.');
+    std::string base = dot == std::string::npos
+        ? full
+        : full.substr(0, dot);
+    // now base == "../output/sample"
+
+    // assume M, N, nets[], super_horizontal, super_vertical are all in scope
+    for (int i = 1; i <= 16; ++i) {
+        // 1) individual file
+        {
+            std::ostringstream oss;
+            oss << base << "_individual" << i << ".out";
+            std::string path = oss.str();
+            std::ofstream f(path);
+
+            f << "Net " << i << ":\n";
+            f << "Horizontal Matrix:\n";
+            for (int y = 0; y < M; ++y) {
+                for (int x = 0; x < N - 1; ++x)
+                    f << nets[i].best_steiner.horizontal[y][x] << ' ';
+                f << "\n";
+            }
+            f << "\n";
+
+            f << "Vertical Matrix:\n";
+            for (int y = 0; y < M - 1; ++y) {
+                for (int x = 0; x < N; ++x)
+                    f << nets[i].best_steiner.vertical[y][x] << ' ';
+                f << "\n";
+            }
+            // no need to print accumulate here
+            f.close();
+        }
+
+        // update cumulative counts
         for (int y = 0; y < M; ++y)
             for (int x = 0; x < N - 1; ++x)
                 if (nets[i].best_steiner.horizontal[y][x])
@@ -187,27 +225,35 @@ int main(int argc, char* argv[]) {
             for (int x = 0; x < N; ++x)
                 if (nets[i].best_steiner.vertical[y][x])
                     ++super_vertical[y][x];
-    }
 
+        // 2) accumulate file
+        {
+            std::ostringstream oss;
+            oss << base << "_accumulate" << i << ".out";
+            std::string path = oss.str();
+            std::ofstream f(path);
 
+            f << "Accumulate for net " << i << ":\n";
+            f << "Horizontal Matrix:\n";
+            for (int y = 0; y < M; ++y) {
+                for (int x = 0; x < N - 1; ++x)
+                    f << super_horizontal[y][x] << ' ';
+                f << "\n";
+            }
+            f << "\n";
 
-    cout << "\nSuperimposed GridMap (Edge Usage Count):\n";
-    cout << "Horizontal Matrix:\n";
-    for (int y = 0; y < M; ++y) {
-        for (int x = 0; x < N - 1; ++x) {
-            cout << super_horizontal[y][x] << " ";
+            f << "Vertical Matrix:\n";
+            for (int y = 0; y < M - 1; ++y) {
+                for (int x = 0; x < N; ++x)
+                    f << super_vertical[y][x] << ' ';
+                f << "\n";
+            }
+            f.close();
         }
-        cout << "\n";
     }
-    cout << "\n";
-    cout << "Vertical Matrix:\n";
-    for (int y = 0; y < M - 1; ++y) {
-        for (int x = 0; x < N; ++x) {
-            cout << super_vertical[y][x] << " ";
-        }
-        cout << "\n";
-    }
+    std::cout << "Writing result to " << argv[2] << "\n";
 
+    // Calc stage 2 wirelength
     long long stage2_len = 0;
     for (const auto& row : super_horizontal)
         for (int v : row) stage2_len += v;
@@ -215,31 +261,6 @@ int main(int argc, char* argv[]) {
         for (int v : row) stage2_len += v;
     cout << "Stage1 wire length = " << stage1_len << '\n';
     cout << "Stage2 wire length = " << stage2_len << '\n';
-
-
-
-/*---Write result to output file*/
-    string output_filepath = argv[2];  // ../output/sample.out
-    cout << "Writing result to " << output_filepath << endl;
-    ofstream output_file(output_filepath);
-    output_file << "M " << M << endl;
-    output_file << "N " << N << endl;
-    output_file << endl;
-    output_file << "Horizontal Matrix:\n";
-    for (int y = 0; y < M; ++y) {
-        for (int x = 0; x < N - 1; ++x) {
-            output_file << super_horizontal[y][x] << " ";
-        }
-        output_file << "\n";
-    }
-    output_file << "Vertical Matrix:\n";
-    for (int y = 0; y < M - 1; ++y) {
-        for (int x = 0; x < N; ++x) {
-            output_file << super_vertical[y][x] << " ";
-        }
-        output_file << "\n";
-    }
-    output_file.close();
     cout << "Time: " << GetTime() - t0 << endl;
 
     return 0;
@@ -608,21 +629,7 @@ void MapAdjacencyToGridMap(Net &net) {
 
 
 void PrintGridMap(const GridMap &grid) {
-    cout << "Horizontal Matrix:\n";
-    for (int y = 0; y < M; ++y) {
-        for (int x = 0; x < N - 1; ++x) {
-            cout << grid.horizontal[y][x] << " ";
-        }
-        cout << "\n";
-    }
-    cout << "\n";
-    cout << "Vertical Matrix:\n";
-    for (int y = 0; y < M - 1; ++y) {
-        for (int x = 0; x < N; ++x) {
-            cout << grid.vertical[y][x] << " ";
-        }
-        cout << "\n";
-    }
+
 }
 
 void Rip_net(Net& net, vector<vector<int>>& H, vector<vector<int>>& V) {
@@ -760,7 +767,7 @@ void Rip_up_reroute(vector<Net>&            nets,
                     int                     id_lo,
                     int                     id_hi)
 {
-    const int MAX_TOP_ITER = 200;
+    const int MAX_TOP_ITER = 100000;
     // std::mt19937 rng{12345};
     std::mt19937 rng{std::random_device{}()};
 
